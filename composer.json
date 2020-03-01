@@ -1,0 +1,15 @@
+{
+    "name": "mferment/approval-bot",
+    "type": "project",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "matks",
+            "email": "mathieu.ferment@prestashop.com"
+        }
+    ],
+    "require": {
+        "knplabs/github-api": "^2.12",
+        "php-http/guzzle6-adapter": "^1.1"
+    }
+}
