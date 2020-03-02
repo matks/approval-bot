@@ -16,6 +16,8 @@ $pullRequestsToCheck = $matches[0];
 $pullRequestsToApprove = [];
 $pullRequestsAlreadyApproved = [];
 
+$paginator  = new Github\ResultPager($client);
+
 foreach ($pullRequestsToCheck as $pullRequestID) {
 
 	echo "Checking status of PR ".$pullRequestID.PHP_EOL;
@@ -23,16 +25,21 @@ foreach ($pullRequestsToCheck as $pullRequestID) {
 	$pullRequest = $client->api('pull_request')->show('prestashop', 'prestashop', $pullRequestID);
 
 	$headSha = $pullRequest['head']['sha'];
-	$reviewRequests = $client->api('pull_request')->reviews()->all('prestashop', 'prestashop', $pullRequestID);
+	echo "PR ".$pullRequestID.' head sha is '.$headSha.PHP_EOL;
+	$reviewRequestsApi = $client->api('pull_request')->reviews();
+
+	$parameters = ['prestashop', 'prestashop', $pullRequestID];
+	$reviewRequests = $paginator->fetchAll($reviewRequestsApi, 'all', $parameters);
 
 	foreach ($reviewRequests as $reviewRequest) {
+
 		$userLogin = $reviewRequest['user']['login'];
 		$reviewedCommitID = $reviewRequest['commit_id'];
 		
 		if ('matks' === $userLogin) {
 
 			if ($reviewedCommitID !== $headSha) {
-				echo 'Matks reviewed an old commit of PR '.$pullRequestID.PHP_EOL;
+				echo 'Matks reviewed an old commit of PR '.$pullRequestID.' (sha: '.$reviewedCommitID.')'.PHP_EOL;
 				$pullRequestsToApprove[] = $pullRequestID;
 			} else {
 				echo 'Matks reviewed head commit of PR '.$pullRequestID.PHP_EOL;
