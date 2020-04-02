@@ -1,73 +1,58 @@
 <?php
 
 require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/util.php';
 
 $client = new \Github\Client();
-$token = file_get_contents(__DIR__.'/token.txt');
+$token = file_get_contents(__DIR__ . '/token.txt');
 $client->authenticate($token, null, Github\Client::AUTH_HTTP_TOKEN);
+$paginator = new Github\ResultPager($client);
 
-$pullRequestsToCheckFileContent = file_get_contents(__DIR__.'/prs.txt');
+$debug = false;
 
-$matches = [];
-$pattern = '#(\d+)#';
-preg_match_all($pattern , $pullRequestsToCheckFileContent, $matches);
-$pullRequestsToCheck = $matches[0];
+echo "---- Fetching GitHub data to find relevant PRs ----" . PHP_EOL;
 
-$pullRequestsToApprove = [];
-$pullRequestsAlreadyApproved = [];
+$migrationPullRequestsApproved = $client->api('search')
+    ->issues('type:pr is:open label:migration reviewed-by:matks');
 
-$paginator  = new Github\ResultPager($client);
+$pullRequestsToCheck = parseGitHubDataToExtractPullRequestIDs($migrationPullRequestsApproved);
+//$pullRequestsToCheck = getPullRequestToCheckIDs();
 
-foreach ($pullRequestsToCheck as $pullRequestID) {
+echo sprintf('Found %d eligible PRs to re-approve', count($pullRequestsToCheck)) . PHP_EOL;
+echo PHP_EOL;
+echo "---- Checking PR status, whether they are eligible for re-approval ----" . PHP_EOL;
 
-	echo "Checking status of PR ".$pullRequestID.PHP_EOL;
+list(
+    $pullRequestsToApprove,
+    $pullRequestsAlreadyApproved) = checkWhetherPullRequestsMustBeReapproved(
+    $pullRequestsToCheck,
+    $client,
+    $paginator,
+    $debug
+);
 
-	$pullRequest = $client->api('pull_request')->show('prestashop', 'prestashop', $pullRequestID);
-
-	$headSha = $pullRequest['head']['sha'];
-	echo "PR ".$pullRequestID.' head sha is '.$headSha.PHP_EOL;
-	$reviewRequestsApi = $client->api('pull_request')->reviews();
-
-	$parameters = ['prestashop', 'prestashop', $pullRequestID];
-	$reviewRequests = $paginator->fetchAll($reviewRequestsApi, 'all', $parameters);
-
-	foreach ($reviewRequests as $reviewRequest) {
-
-		$userLogin = $reviewRequest['user']['login'];
-		$reviewedCommitID = $reviewRequest['commit_id'];
-		
-		if ('matks' === $userLogin) {
-
-			if ($reviewedCommitID !== $headSha) {
-				echo 'Matks reviewed an old commit of PR '.$pullRequestID.' (sha: '.$reviewedCommitID.')'.PHP_EOL;
-				$pullRequestsToApprove[] = $pullRequestID;
-			} else {
-				echo 'Matks reviewed head commit of PR '.$pullRequestID.PHP_EOL;
-				$pullRequestsAlreadyApproved[] = $pullRequestID;
-			}
-
-		}
-	}
-}
-
-$pullRequestsAlreadyApproved = array_unique($pullRequestsAlreadyApproved);
-$pullRequestsToApprove = array_unique($pullRequestsToApprove);
+$pullRequestsToApprove = array_diff($pullRequestsToApprove, $pullRequestsAlreadyApproved);
 
 echo PHP_EOL;
-echo "Summary:".PHP_EOL;
+echo "---- Automatic approval processing ----" . PHP_EOL;
+if (count($pullRequestsAlreadyApproved) > 0) {
+    echo "Already approved:" . PHP_EOL;
 
-foreach ($pullRequestsAlreadyApproved as $pullRequestID) {
-	echo '- Ignoring PR '.$pullRequestID." as it's already approved".PHP_EOL;
+    foreach ($pullRequestsAlreadyApproved as $pullRequestID) {
+        echo '- Ignoring PR ' . $pullRequestID . " as it's already approved" . PHP_EOL;
+    }
+
+    echo PHP_EOL;
 }
+if (count($pullRequestsToApprove) > 0) {
+    echo "To approve:" . PHP_EOL;
 
-foreach ($pullRequestsToApprove as $pullRequestID) {
-	if (in_array($pullRequestID, $pullRequestsAlreadyApproved)) {
-		continue;
-	}
-	
-	echo '- Approving PR '.$pullRequestID.PHP_EOL;
-	$client->api('pull_request')->reviews()->create(
-		'prestashop', 'prestashop', $pullRequestID,
-		array('event' => 'APPROVE')
-	);
+    foreach ($pullRequestsToApprove as $pullRequestID) {
+        echo '- Approving PR ' . $pullRequestID;
+        $client->api('pull_request')->reviews()->create(
+            'prestashop', 'prestashop', $pullRequestID,
+            array('event' => 'APPROVE')
+        );
+        echo '... success' . PHP_EOL;
+    }
 }
