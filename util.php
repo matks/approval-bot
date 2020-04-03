@@ -16,19 +16,17 @@ function getPullRequestToCheckIDsFromFile()
 }
 
 /**
- * @param $pullRequestsToCheck
- * @param $client
- * @param $paginator
- * @param $pullRequestsToApprove
- * @param $pullRequestsAlreadyApproved
+ * @param array $pullRequestsToCheck
+ * @param \Github\Client $client
+ * @param \Github\ResultPager $paginator
  * @param bool $debug
  *
  * @return array
  */
 function checkWhetherPullRequestsMustBeReapproved(
-    $pullRequestsToCheck,
-    $client,
-    $paginator,
+    array $pullRequestsToCheck,
+    \Github\Client $client,
+    \Github\ResultPager $paginator,
     $debug)
 {
     $pullRequestsToApprove = [];
@@ -46,6 +44,12 @@ function checkWhetherPullRequestsMustBeReapproved(
                 $pullRequest['title'],
                 $pullRequest['user']['login']
             ) . PHP_EOL;
+
+        if ($pullRequest['user']['login'] === 'matks') {
+            $status = 'authored by matks';
+            $pullRequestsAlreadyApproved[] = $pullRequestID;
+            continue;
+        }
 
         $headSha = $pullRequest['head']['sha'];
         if ($debug) {
@@ -99,12 +103,6 @@ function checkWhetherPullRequestsMustBeReapproved(
         if ($status === null) {
             $status = 'ignored (never approved by matks)';
         }
-        if ($status === 'dismissed') {
-            $status = sprintf(
-                'dismissed ; %s',
-                printClickableLink($pullRequest['html_url'], '(click here to see the PR)')
-            );
-        }
 
         echo sprintf('- status is %s', $status) . PHP_EOL;
     }
@@ -112,15 +110,19 @@ function checkWhetherPullRequestsMustBeReapproved(
     $pullRequestsAlreadyApproved = array_unique($pullRequestsAlreadyApproved);
     $pullRequestsToApprove = array_unique($pullRequestsToApprove);
 
-    return array($pullRequestsToApprove, $pullRequestsAlreadyApproved);
+    return [
+        $pullRequestsToApprove,
+        $pullRequestsAlreadyApproved,
+        $pullRequestsWithDismissedReview
+    ];
 }
 
 /**
- * @param $migrationPullRequests
+ * @param array $migrationPullRequests
  *
  * @return int[]
  */
-function parseGitHubDataToExtractPullRequestIDs($migrationPullRequests)
+function parseGitHubDataToExtractPullRequestIDs(array $migrationPullRequests)
 {
     if (empty($migrationPullRequests)) {
         return [];
@@ -136,7 +138,36 @@ function parseGitHubDataToExtractPullRequestIDs($migrationPullRequests)
     return $pullRequestIds;
 }
 
+/**
+ * @param string $link
+ * @param string $text
+ *
+ * @return string
+ */
 function printClickableLink($link, $text)
 {
     return "\033]8;;" . $link . "\033\\" . $text . "\033]8;;\033\\";
+}
+
+/**
+ * @param array $pullRequestsToApprove
+ * @param \Github\Client $client
+ */
+function approvePullRequests(array $pullRequestsToApprove, \Github\Client $client)
+{
+    foreach ($pullRequestsToApprove as $pullRequestID) {
+        echo '- Approving PR ' . $pullRequestID;
+
+        try {
+            $client->api('pull_request')->reviews()->create(
+                'prestashop', 'prestashop', $pullRequestID,
+                array('event' => 'APPROVE')
+            );
+        } catch (\Github\Exception\ValidationFailedException $e) {
+            echo '... failed' . PHP_EOL;
+            continue;
+        }
+
+        echo '... success' . PHP_EOL;
+    }
 }
