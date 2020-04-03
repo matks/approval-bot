@@ -14,7 +14,7 @@ echo "---- Fetching GitHub data to find relevant PRs ----" . PHP_EOL;
 
 echo 'Searching for open Migration PRs reviewed by matks'.PHP_EOL;
 $migrationPullRequests = $client->api('search')
-    ->issues('type:pr is:open label:migration reviewed-by:matks repo:prestashop/prestashop');
+    ->issues('type:pr is:open label:migration review:required reviewed-by:matks repo:prestashop/prestashop');
 
 $pullRequestsToCheck = parseGitHubDataToExtractPullRequestIDs($migrationPullRequests);
 //$pullRequestsToCheck = getPullRequestToCheckIDs();

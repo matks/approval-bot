@@ -109,6 +109,7 @@ function checkWhetherPullRequestsMustBeReapproved(
 
     $pullRequestsAlreadyApproved = array_unique($pullRequestsAlreadyApproved);
     $pullRequestsToApprove = array_unique($pullRequestsToApprove);
+    $pullRequestsWithDismissedReview = array_unique($pullRequestsWithDismissedReview);
 
     return [
         $pullRequestsToApprove,
